@@ -174,7 +174,11 @@ RES ResourceLoader::load(const String &p_path, const String& p_type_hint, bool p
 		if (OS::get_singleton()->is_stdout_verbose())
 			print_line("load resource: "+local_path+" (cached)");
 
-		return RES( ResourceCache::get(local_path ) );
+		Ref<Resource> res_cached = ResourceCache::get(local_path);
+		Ref<ResourceInteractiveLoaderDefault> ril = Ref<ResourceInteractiveLoaderDefault>(memnew(ResourceInteractiveLoaderDefault));
+
+		ril->resource = res_cached;
+		return ril;
 	}
 
 	String remapped_path = PathRemap::get_singleton()->get_remap(local_path);
