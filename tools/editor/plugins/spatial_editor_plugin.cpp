@@ -295,6 +295,28 @@ ObjectID SpatialEditorViewport::_select_ray(const Point2& p_pos, bool p_append,b
 
 		Ref<SpatialEditorGizmo> seg = spat->get_gizmo();
 
+		Node* scene = editor->get_edited_scene();
+		Node* owner = spat->get_owner();
+
+		//Does not work with lights
+		Light* as_light = spat->cast_to<Light>();
+
+		if (owner != scene && !as_light && !seg.is_valid()) { // Find the subscene and assign a new gizmo of selected type
+			seg = SpatialEditorGizmos::singleton->get_gizmo(spat);
+
+			Node* tmp = spat;
+			while (tmp->get_owner() != scene) {
+				tmp = tmp->get_owner();
+			}
+			spat = tmp->cast_to<Spatial>();
+
+			if (!spat)
+				continue;
+			
+			spat->set_gizmo(seg);
+			spat->update_gizmo();
+		}
+
 		if (!seg.is_valid())
 			continue;
 
