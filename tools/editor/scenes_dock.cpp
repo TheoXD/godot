@@ -37,6 +37,8 @@
 
 #include "editor_settings.h"
 #include "scene/main/viewport.h"
+
+
 bool ScenesDock::_create_tree(TreeItem *p_parent,EditorFileSystemDirectory *p_dir) {
 
 
@@ -57,60 +59,8 @@ bool ScenesDock::_create_tree(TreeItem *p_parent,EditorFileSystemDirectory *p_di
 		item->select(0);
 	}
 
-
-	//item->set_custom_bg_color(0,get_color("prop_subsection","Editor"));
-
-	bool has_items=false;
-
-	for(int i=0;i<p_dir->get_subdir_count();i++) {
-
-		if (_create_tree(item,p_dir->get_subdir(i)))
-			has_items=true;
-	}
-#if 0
-	for (int i=0;i<p_dir->get_file_count();i++) {
-
-		String file_name = p_dir->get_file(i);
-		String file_path = p_dir->get_file_path(i);
-
-		// ScenesDockFilter::FILTER_PATH
-		String search_from = file_path.right(6); // trim "res://"
-		if (file_filter == ScenesDockFilter::FILTER_NAME)
-			 search_from = file_name;
-		else if (file_filter == ScenesDockFilter::FILTER_FOLDER)
-			search_from = file_path.right(6).get_base_dir();
-
-		if (search_term!="" && search_from.findn(search_term)==-1)
-			continue;
-
-		bool isfave = favorites.has(file_path);
-		if (button_favorite->is_pressed() && !isfave)
-			continue;
-
-		TreeItem *fitem = tree->create_item(item);
-		fitem->set_cell_mode(0,TreeItem::CELL_MODE_CHECK);
-		fitem->set_editable(0,true);
-		fitem->set_checked(0,isfave);
-		fitem->set_text(0,file_name);
-
-		Ref<Texture> icon = get_icon( (has_icon(p_dir->get_file_type(i),"EditorIcons")?p_dir->get_file_type(i):String("Object")),"EditorIcons");
-		fitem->set_icon(0, icon );
-
-
-		fitem->set_metadata(0,file_path);
-		//if (p_dir->files[i]->icon.is_valid()) {
-//			fitem->set_icon(0,p_dir->files[i]->icon);
-//		}
-		has_items=true;
-
-	}
-#endif
-	/*if (!has_items) {
-
-		memdelete(item);
-		return false;
-
-	}*/
+	for(int i=0;i<p_dir->get_subdir_count();i++)
+		_create_tree(item,p_dir->get_subdir(i));
 
 	return true;
 }
@@ -189,6 +139,7 @@ void ScenesDock::_notification(int p_what) {
 			initialized=true;
 
 			EditorFileSystem::get_singleton()->connect("filesystem_changed",this,"_fs_changed");
+			EditorResourcePreview::get_singleton()->connect("preview_invalidated",this,"_preview_invalidated");
 
 			button_reload->set_icon( get_icon("Reload","EditorIcons"));
 			button_favorite->set_icon( get_icon("Favorites","EditorIcons"));
@@ -663,6 +614,27 @@ void ScenesDock::_go_to_dir(const String& p_dir){
 
 
 }
+
+void ScenesDock::_preview_invalidated(const String& p_path) {
+
+	if (p_path.get_base_dir()==path && search_box->get_text()==String() && file_list_vb->is_visible()) {
+
+
+		for(int i=0;i<files->get_item_count();i++) {
+
+			if (files->get_item_metadata(i)==p_path) {
+				//re-request preview
+				Array udata;
+				udata.resize(2);
+				udata[0]=i;
+				udata[1]=files->get_item_text(i);
+				EditorResourcePreview::get_singleton()->queue_resource_preview(p_path,this,"_thumbnail_done",udata);
+				break;
+			}
+		}
+	}
+}
+
 void ScenesDock::_fs_changed() {
 
 	button_hist_prev->set_disabled(history_pos==0);
@@ -1619,6 +1591,9 @@ void ScenesDock::_bind_methods() {
 	ObjectTypeDB::bind_method(_MD("can_drop_data_fw"), &ScenesDock::can_drop_data_fw);
 	ObjectTypeDB::bind_method(_MD("drop_data_fw"), &ScenesDock::drop_data_fw);
 	ObjectTypeDB::bind_method(_MD("_files_list_rmb_select"),&ScenesDock::_files_list_rmb_select);
+
+	ObjectTypeDB::bind_method(_MD("_preview_invalidated"),&ScenesDock::_preview_invalidated);
+
 
 	ADD_SIGNAL(MethodInfo("instance"));
 	ADD_SIGNAL(MethodInfo("open"));

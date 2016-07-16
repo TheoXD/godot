@@ -32,6 +32,7 @@
 #include "scene/gui/separator.h"
 #include "scene/resources/dynamic_font.h"
 #include "os/keyboard.h"
+#include "tools/editor/editor_scale.h"
 
 void GotoLineDialog::popup_find_line(TextEdit *p_edit) {
 
@@ -984,36 +985,47 @@ void CodeTextEditor::_text_editor_input_event(const InputEvent& p_event) {
 		if (mb.pressed && mb.mod.command) {
 
 			if (mb.button_index==BUTTON_WHEEL_UP) {
-
-				font_resize_val+=1;
-
-				if (font_resize_timer->get_time_left()==0)
-					font_resize_timer->start();
-
+				_zoom_in();
 			} else if (mb.button_index==BUTTON_WHEEL_DOWN) {
-
-				font_resize_val-=1;
-
-				if (font_resize_timer->get_time_left()==0)
-					font_resize_timer->start();
+				_zoom_out();
 			}
 		}
 	} else if (p_event.type==InputEvent::KEY) {
 
-		const InputEventKey& k=p_event.key;
-
-		if (k.pressed && k.mod.command) {
-
-			if (k.scancode==KEY_0) { // reset source font size to default
-
-				Ref<DynamicFont> font = text_editor->get_font("font");
-
-				if (font.is_valid()) {
-					EditorSettings::get_singleton()->set("global/source_font_size",14);
-					font->set_size(14);
-				}
+		if (p_event.key.pressed) {
+			if (ED_IS_SHORTCUT("script_editor/zoom_in", p_event)) {
+				_zoom_in();
+			}
+			if (ED_IS_SHORTCUT("script_editor/zoom_out", p_event)) {
+				_zoom_out();
+			}
+			if (ED_IS_SHORTCUT("script_editor/reset_zoom", p_event)) {
+				_reset_zoom();
 			}
 		}
+	}
+}
+
+void CodeTextEditor::_zoom_in() {
+	font_resize_val+=1;
+
+	if (font_resize_timer->get_time_left()==0)
+		font_resize_timer->start();
+}
+
+void CodeTextEditor::_zoom_out() {
+	font_resize_val-=1;
+
+	if (font_resize_timer->get_time_left()==0)
+		font_resize_timer->start();
+}
+
+void CodeTextEditor::_reset_zoom() {
+	Ref<DynamicFont> font = text_editor->get_font("font"); // reset source font size to default
+
+	if (font.is_valid()) {
+		EditorSettings::get_singleton()->set("global/source_font_size",14);
+		font->set_size(14);
 	}
 }
 
@@ -1149,6 +1161,10 @@ void CodeTextEditor::_bind_methods() {
 
 CodeTextEditor::CodeTextEditor() {
 
+	ED_SHORTCUT("script_editor/zoom_in", TTR("Zoom In"), KEY_MASK_CMD|KEY_EQUAL);
+	ED_SHORTCUT("script_editor/zoom_out", TTR("Zoom Out"), KEY_MASK_CMD|KEY_MINUS);
+	ED_SHORTCUT("script_editor/reset_zoom", TTR("Reset Zoom"), KEY_MASK_CMD|KEY_0);
+
 	find_replace_bar = memnew( FindReplaceBar );
 	add_child(find_replace_bar);
 	find_replace_bar->set_h_size_flags(SIZE_EXPAND_FILL);
@@ -1198,6 +1214,10 @@ CodeTextEditor::CodeTextEditor() {
 	line_col = memnew( Label );
 	status_bar->add_child(line_col);
 	line_col->set_valign(Label::VALIGN_CENTER);
+	line_col->set_autowrap(true);
+	line_col->set_v_size_flags(SIZE_FILL);
+	line_col->set_custom_minimum_size(Size2(100,1)*EDSCALE);
+	status_bar->add_child( memnew( Label ) ); //to keep the height if the other labels are not visible
 
 
 	text_editor->connect("input_event", this,"_text_editor_input_event");
