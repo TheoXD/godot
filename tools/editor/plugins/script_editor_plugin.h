@@ -268,6 +268,7 @@ class ScriptEditor : public VBoxContainer {
 	void _update_window_menu();
 	void _script_created(Ref<Script> p_script);
 
+	void _save_layout();
 	void _editor_settings_changed();
 	void _autosave_scripts();
 
@@ -321,6 +322,7 @@ public:
 	void get_breakpoints(List<String> *p_breakpoints);
 
 	void swap_lines(TextEdit *tx, int line1, int line2);
+	void _breakpoint_toggled(const int p_row);
 
 	void save_all_scripts();
 

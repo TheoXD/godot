@@ -317,6 +317,7 @@ void ScriptTextEditor::_load_theme_settings() {
 	get_text_edit()->add_color_override("font_color",EDITOR_DEF("text_editor/text_color",Color(0,0,0)));
 	get_text_edit()->add_color_override("line_number_color",EDITOR_DEF("text_editor/line_number_color",Color(0,0,0)));
 	get_text_edit()->add_color_override("caret_color",EDITOR_DEF("text_editor/caret_color",Color(0,0,0)));
+	get_text_edit()->add_color_override("caret_background_color",EDITOR_DEF("text_editor/caret_background_color",Color(0,0,0)));
 	get_text_edit()->add_color_override("font_selected_color",EDITOR_DEF("text_editor/text_selected_color",Color(1,1,1)));
 	get_text_edit()->add_color_override("selection_color",EDITOR_DEF("text_editor/selection_color",Color(0.2,0.2,1)));
 	get_text_edit()->add_color_override("brace_mismatch_color",EDITOR_DEF("text_editor/brace_mismatch_color",Color(1,0.2,0.2)));
@@ -818,7 +819,7 @@ void ScriptEditor::_close_tab(int p_idx) {
 
 
 	_update_script_names();
-	EditorNode::get_singleton()->save_layout();
+	_save_layout();
 }
 
 void ScriptEditor::_close_current_tab() {
@@ -1010,6 +1011,18 @@ void ScriptEditor::swap_lines(TextEdit *tx, int line1, int line2)
     tx->set_line(line1, tmp2);
 
     tx->cursor_set_line(line2);
+}
+
+void ScriptEditor::_breakpoint_toggled(const int p_row) {
+	int selected = tab_container->get_current_tab();
+	if (selected<0 || selected>=tab_container->get_child_count()) {
+		return;
+	}
+
+	ScriptTextEditor *current = tab_container->get_child(selected)->cast_to<ScriptTextEditor>();
+	if (current) {
+		get_debugger()->set_breakpoint(current->get_edited_script()->get_path(),p_row+1,current->get_text_edit()->is_line_set_as_breakpoint(p_row));
+	}
 }
 
 void ScriptEditor::_file_dialog_action(String p_file) {
@@ -2044,6 +2057,9 @@ void ScriptEditor::_update_script_colors() {
 
 void ScriptEditor::_update_script_names() {
 
+	if (restoring_layout)
+		return;
+
 	waiting_update_names=false;
 	Set<Ref<Script> > used;
 	Node* edited = EditorNode::get_singleton()->get_edited_scene();
@@ -2195,9 +2211,11 @@ void ScriptEditor::edit(const Ref<Script>& p_script) {
 	ste->get_text_edit()->cursor_set_blink_enabled(EditorSettings::get_singleton()->get("text_editor/caret_blink"));
 	ste->get_text_edit()->cursor_set_blink_speed(EditorSettings::get_singleton()->get("text_editor/caret_blink_speed"));
 	ste->get_text_edit()->set_draw_breakpoint_gutter(EditorSettings::get_singleton()->get("text_editor/show_breakpoint_gutter"));
+	ste->get_text_edit()->cursor_set_block_mode(EditorSettings::get_singleton()->get("text_editor/block_caret"));
 	ste->get_text_edit()->set_callhint_settings(
 		EditorSettings::get_singleton()->get("text_editor/put_callhint_tooltip_below_current_line"),
 		EditorSettings::get_singleton()->get("text_editor/callhint_tooltip_offset"));
+	ste->get_text_edit()->connect("breakpoint_toggled", this, "_breakpoint_toggled");
 	tab_container->add_child(ste);
 	_go_to_tab(tab_container->get_tab_count()-1);
 
@@ -2205,10 +2223,8 @@ void ScriptEditor::edit(const Ref<Script>& p_script) {
 
 
 	_update_script_names();
+	_save_layout();
 	ste->connect("name_changed",this,"_update_script_names");
-	if (!restoring_layout) {
-		EditorNode::get_singleton()->save_layout();
-	}
 
 	//test for modification, maybe the script was not edited but was loaded
 
@@ -2328,6 +2344,15 @@ void ScriptEditor::_add_callback(Object *p_obj, const String& p_function, const 
 
 }
 
+void ScriptEditor::_save_layout() {
+
+	if (restoring_layout) {
+		return;
+	}
+
+	editor->save_layout();
+}
+
 void ScriptEditor::_editor_settings_changed() {
 
 	trim_trailing_whitespace_on_save = EditorSettings::get_singleton()->get("text_editor/trim_trailing_whitespace_on_save");
@@ -2362,6 +2387,7 @@ void ScriptEditor::_editor_settings_changed() {
 		ste->get_text_edit()->cursor_set_blink_enabled(EditorSettings::get_singleton()->get("text_editor/caret_blink"));
 		ste->get_text_edit()->cursor_set_blink_speed(EditorSettings::get_singleton()->get("text_editor/caret_blink_speed"));
 		ste->get_text_edit()->set_draw_breakpoint_gutter(EditorSettings::get_singleton()->get("text_editor/show_breakpoint_gutter"));
+		ste->get_text_edit()->cursor_set_block_mode(EditorSettings::get_singleton()->get("text_editor/block_caret"));
 	}
 
 	ScriptServer::set_reload_scripts_on_save(EDITOR_DEF("text_editor/auto_reload_and_parse_scripts_on_save",true));
@@ -2384,7 +2410,7 @@ void ScriptEditor::_tree_changed() {
 
 void ScriptEditor::_script_split_dragged(float) {
 
-	EditorNode::get_singleton()->save_layout();
+	_save_layout();
 }
 
 void ScriptEditor::_unhandled_input(const InputEvent& p_event) {
@@ -2430,7 +2456,6 @@ void ScriptEditor::set_window_layout(Ref<ConfigFile> p_layout) {
 		}
 	}
 
-
 	for(int i=0;i<helps.size();i++) {
 
 		String path = helps[i];
@@ -2446,9 +2471,9 @@ void ScriptEditor::set_window_layout(Ref<ConfigFile> p_layout) {
 		script_split->set_split_offset(p_layout->get_value("ScriptEditor","split_offset"));
 	}
 
-
 	restoring_layout=false;
 
+	_update_script_names();
 }
 
 void ScriptEditor::get_window_layout(Ref<ConfigFile> p_layout) {
@@ -2508,7 +2533,7 @@ void ScriptEditor::_help_class_open(const String& p_class) {
 	eh->go_to_class(p_class,0);
 	eh->connect("go_to_help",this,"_help_class_goto");
 	_update_script_names();
-
+	_save_layout();
 }
 
 void ScriptEditor::_help_class_goto(const String& p_desc) {
@@ -2537,7 +2562,7 @@ void ScriptEditor::_help_class_goto(const String& p_desc) {
 	eh->go_to_help(p_desc);
 	eh->connect("go_to_help",this,"_help_class_goto");
 	_update_script_names();
-
+	_save_layout();
 }
 
 void ScriptEditor::_update_history_pos(int p_new_pos) {
@@ -2671,6 +2696,7 @@ void ScriptEditor::_bind_methods() {
 	ObjectTypeDB::bind_method("_res_saved_callback",&ScriptEditor::_res_saved_callback);
 	ObjectTypeDB::bind_method("_goto_script_line",&ScriptEditor::_goto_script_line);
 	ObjectTypeDB::bind_method("_goto_script_line2",&ScriptEditor::_goto_script_line2);
+	ObjectTypeDB::bind_method("_breakpoint_toggled", &ScriptEditor::_breakpoint_toggled);
 	ObjectTypeDB::bind_method("_breaked",&ScriptEditor::_breaked);
 	ObjectTypeDB::bind_method("_show_debugger",&ScriptEditor::_show_debugger);
 	ObjectTypeDB::bind_method("_get_debug_tooltip",&ScriptEditor::_get_debug_tooltip);
